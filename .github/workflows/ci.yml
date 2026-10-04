@@ -2,9 +2,11 @@ name: SIPRIMA PAS CI
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
   pull_request:
-    branches: [main]
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -19,9 +21,24 @@ jobs:
         working-directory: backend
 
     env:
-      DATABASE_URL: postgresql://siprima:siprima@localhost:5432/siprima_pas
-      JWT_SECRET: ci-test-secret-change-me
+      DATABASE_URL: postgresql://siprima:siprima_ci_password@localhost:5432/siprima_pas
+      JWT_SECRET: ci-test-secret-change-me-32-characters-minimum
       CORS_ORIGIN: http://localhost
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: siprima_pas
+          POSTGRES_USER: siprima
+          POSTGRES_PASSWORD: siprima_ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U siprima -d siprima_pas"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
 
     steps:
       - name: Checkout repository
@@ -42,6 +59,12 @@ jobs:
 
       - name: Validate Prisma schema
         run: npx prisma validate
+
+      - name: Deploy Prisma migrations
+        run: npm run prisma:deploy
+
+      - name: Verify migration status
+        run: npx prisma migrate status
 
       - name: Build backend
         run: npm run build
@@ -80,7 +103,9 @@ jobs:
   docker:
     name: Docker Build
     runs-on: ubuntu-latest
-    needs: [backend, frontend]
+    needs:
+      - backend
+      - frontend
 
     steps:
       - name: Checkout repository
@@ -104,92 +129,76 @@ jobs:
           tags: siprima-pas-frontend:ci
 
   postgres-baseline:
-    name: Generate PostgreSQL Baseline
+    name: Verify PostgreSQL Baseline
     runs-on: ubuntu-latest
+
     defaults:
       run:
         working-directory: backend
+
+    env:
+      DATABASE_URL: postgresql://siprima:siprima_ci_password@localhost:5432/siprima_pas
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: siprima_pas
+          POSTGRES_USER: siprima
+          POSTGRES_PASSWORD: siprima_ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U siprima -d siprima_pas"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
           cache-dependency-path: backend/package-lock.json
+
       - name: Install dependencies
         run: npm ci
-      - name: Generate PostgreSQL baseline SQL
+
+      - name: Generate Prisma Client
+        run: npm run prisma:generate
+
+      - name: Validate Prisma schema
+        run: npx prisma validate
+
+      - name: Deploy committed baseline migration
+        run: npm run prisma:deploy
+
+      - name: Verify migration status
+        run: npx prisma migrate status
+
+      - name: Verify migration file
         run: |
-          mkdir -p ../artifacts
-          npx prisma migrate diff \
-            --from-empty \
-            --to-schema-datamodel prisma/schema.prisma \
-            --script > ../artifacts/postgresql-baseline.sql
-      - name: Verify baseline
-        run: |
-          test -s ../artifacts/postgresql-baseline.sql
+          test -s prisma/migrations/20261005000000_init_baseline/migration.sql
+
           echo "=== BASELINE SIZE ==="
-          wc -l ../artifacts/postgresql-baseline.sql
+          wc -l prisma/migrations/20261005000000_init_baseline/migration.sql
+
           echo "=== CREATE TABLE COUNT ==="
-          grep -c "CREATE TABLE" ../artifacts/postgresql-baseline.sql
+          test "$(grep -c 'CREATE TABLE' prisma/migrations/20261005000000_init_baseline/migration.sql)" -eq 29
+
           echo "=== CREATE TYPE COUNT ==="
-          grep -c "CREATE TYPE" ../artifacts/postgresql-baseline.sql
-      - name: Upload baseline artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: siprima-postgresql-baseline
-          path: artifacts/postgresql-baseline.sql
-  postgres-baseline-inspect:
-    name: Inspect PostgreSQL Baseline
-    runs-on: ubuntu-latest
-    needs: [postgres-baseline]
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+          test "$(grep -c 'CREATE TYPE' prisma/migrations/20261005000000_init_baseline/migration.sql)" -eq 6
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: backend/package-lock.json
-
-      - name: Install dependencies
-        working-directory: backend
-        run: npm ci
-
-      - name: Generate baseline
-        working-directory: backend
-        run: |
-          mkdir -p ../artifacts
-          npx prisma migrate diff \
-            --from-empty \
-            --to-schema-datamodel prisma/schema.prisma \
-            --script > ../artifacts/postgresql-baseline.sql
-
-      - name: Inspect baseline
-        run: |
-          echo "=== BASELINE FILE ==="
-          wc -l artifacts/postgresql-baseline.sql
-          echo
-          echo "=== CREATE TABLE COUNT ==="
-          grep -c "CREATE TABLE" artifacts/postgresql-baseline.sql
-          echo
-          echo "=== CREATE TYPE COUNT ==="
-          grep -c "CREATE TYPE" artifacts/postgresql-baseline.sql
-          echo
           echo "=== DATETIME CHECK ==="
-          if grep -ni "DATETIME" artifacts/postgresql-baseline.sql; then
+          if grep -ni 'DATETIME' prisma/migrations/20261005000000_init_baseline/migration.sql; then
             echo "ERROR: DATETIME ditemukan"
             exit 1
           else
             echo "OK: tidak ada DATETIME"
           fi
-          echo
-          echo "=== TABLE LIST ==="
-          grep -E "^CREATE TABLE" artifacts/postgresql-baseline.sql
-          echo
-          echo "=== TYPE LIST ==="
-          grep -E "^CREATE TYPE" artifacts/postgresql-baseline.sql
+
+          echo "=== BASELINE VERIFICATION PASSED ==="
