@@ -1,0 +1,554 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RoleName {
+  ADMIN
+  OPERATOR
+  LEADERSHIP
+}
+enum SubmissionStatus {
+  BELUM_MASUK
+  DITERIMA
+  VALID
+  WARNING
+  ERROR
+  TERLAMBAT
+}
+enum ImportStatus {
+  UPLOADED
+  PROCESSING
+  VALIDATED
+  READY_TO_SAVE
+  SAVED
+  FAILED
+}
+enum ValidationStatus {
+  VALID
+  WARNING
+  ERROR
+}
+enum CaseStatus {
+  LAMA
+  BARU
+}
+enum PeriodType {
+  BULANAN
+  SEMESTERAN
+  TAHUNAN
+}
+
+model MasterUPT {
+  id String @id @default(uuid())
+  kodeUpt String @unique @db.VarChar(30)
+  namaUpt String @db.VarChar(200)
+  jenisUpt String? @db.VarChar(50)
+  kelasUpt String? @db.VarChar(20)
+  kabupatenKota String? @db.VarChar(100)
+  kanwil String? @db.VarChar(100)
+  alamat String?
+  aktif Boolean @default(true)
+  submissions ReportSubmission[]
+  imports ImportBatch[]
+  bjmhs BjmhsScreening[]
+  maternal MaternalRecord[]
+  deaths DeathRecord[]
+  kie KieActivitySummary[]
+  palliative PalliativeRecord[]
+  ptm PtmCaseSummary[]
+  infectious InfectiousDiseaseSummary[]
+  referrals Referral[]
+  sarpras ClinicFacility[]
+  documents SubmissionDocument[]
+  medicines MedicineMaster[]
+  receipts MedicineReceipt[]
+  inbounds MedicineInbound[]
+  distributionsFrom MedicineDistribution[] @relation("DistributionFrom")
+  distributionsTo MedicineDistribution[] @relation("DistributionTo")
+  issues MedicineIssue[]
+  openings MedicineStockOpening[]
+}
+model ReportPeriod {
+  id String @id @default(uuid())
+  tahun Int
+  tipePeriode PeriodType
+  bulan Int?
+  semester Int?
+  label String @db.VarChar(50)
+  startDate DateTime
+  endDate DateTime
+  imports ImportBatch[]
+  submissions ReportSubmission[]
+  @@unique([tahun, tipePeriode, bulan, semester])
+}
+model ReportType {
+  id String @id @default(uuid())
+  code String @unique @db.VarChar(50)
+  name String @db.VarChar(150)
+  periodicity String @db.VarChar(20)
+  indicators IndicatorMaster[]
+  submissions ReportSubmission[]
+}
+model IndicatorMaster {
+  id String @id @default(uuid())
+  reportTypeId String
+  code String @db.VarChar(100)
+  name String @db.VarChar(200)
+  unit String? @db.VarChar(50)
+  active Boolean @default(true)
+  reportType ReportType @relation(fields:[reportTypeId], references:[id], onDelete:Cascade)
+  @@unique([reportTypeId, code])
+}
+model User {
+  id String @id @default(uuid())
+  name String
+  email String @unique
+  passwordHash String
+  role RoleName
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  imports ImportBatch[]
+  auditLogs AuditLog[]
+  healthProfiles HealthProfile[] @relation("HealthProfileCreatedBy")
+  healthProfilesUpdated HealthProfile[] @relation("HealthProfileUpdatedBy")
+  healthExamsCreated HealthExam[] @relation("HealthExamCreatedBy")
+  healthExamsUpdated HealthExam[] @relation("HealthExamUpdatedBy")
+}
+model ImportBatch {
+  id String @id @default(uuid())
+  batchNumber String @unique
+  uploadedAt DateTime @default(now())
+  uploadedBy String
+  uptId String
+  periodId String?
+  status ImportStatus @default(UPLOADED)
+  totalFiles Int @default(0)
+  totalRows Int @default(0)
+  validRows Int @default(0)
+  warningRows Int @default(0)
+  errorRows Int @default(0)
+  user User @relation(fields:[uploadedBy], references:[id])
+  upt MasterUPT @relation(fields:[uptId], references:[id])
+  period ReportPeriod? @relation(fields:[periodId], references:[id])
+  files SourceFile[]
+  submissions ReportSubmission[]
+}
+model SourceFile {
+  id String @id @default(uuid())
+  importBatchId String
+  fileName String
+  fileType String
+  fileSize BigInt
+  fileHash String @db.VarChar(128)
+  storagePath String
+  sourceReportType String?
+  batch ImportBatch @relation(fields:[importBatchId], references:[id], onDelete:Cascade)
+  records SourceRecord[]
+  documents SubmissionDocument[]
+  @@index([fileHash])
+}
+model SourceRecord {
+  id String @id @default(uuid())
+  sourceFileId String
+  sheetName String
+  sourceRow Int
+  sourceColumnRange String?
+  rawPayload Json
+  normalizedPayload Json?
+  validationStatus ValidationStatus
+  validationMessage String?
+  file SourceFile @relation(fields:[sourceFileId], references:[id], onDelete:Cascade)
+  bjmhsScreenings BjmhsScreening[]
+  maternalRecords MaternalRecord[]
+  deathRecords DeathRecord[]
+  kieActivities KieActivitySummary[]
+  palliativeRecords PalliativeRecord[]
+  ptmCaseSummaries PtmCaseSummary[]
+  infectiousDiseaseSummaries InfectiousDiseaseSummary[]
+  referrals Referral[]
+  clinicFacilities ClinicFacility[]
+  @@index([sourceFileId, sheetName, sourceRow])
+}
+model ReportSubmission {
+  id String @id @default(uuid())
+  uptId String
+  periodId String
+  reportTypeId String
+  status SubmissionStatus
+  receivedAt DateTime?
+  validatedAt DateTime?
+  importBatchId String?
+  notes String?
+  upt MasterUPT @relation(fields:[uptId], references:[id])
+  period ReportPeriod @relation(fields:[periodId], references:[id])
+  reportType ReportType @relation(fields:[reportTypeId], references:[id])
+  batch ImportBatch? @relation(fields:[importBatchId], references:[id], onDelete:SetNull)
+  @@unique([uptId, periodId, reportTypeId])
+}
+model BjmhsScreening {
+  id String @id @default(uuid())
+ uptId String
+ periodId String
+ personName String?
+ sex String?
+ legalStatus String?
+ screeningResult String?
+ followUp String?
+ referralDateText String?
+ diagnosis String?
+ diagnosisGroup String?
+ pharmacologicalTreatment String?
+ nonPharmacologicalTreatment String?
+ followupNote String?
+ sourceRecordId String?
+  upt MasterUPT @relation(fields:[uptId], references:[id])
+ sourceRecord SourceRecord? @relation(fields:[sourceRecordId], references:[id], onDelete:SetNull)
+}
+model MaternalRecord {
+  id String @id @default(uuid())
+ uptId String
+ periodId String
+ personName String?
+ age Int?
+ legalStatus String?
+ pregnancyStatus String?
+ gestationalAge String?
+ deliveryStatus String?
+ deliveryType String?
+ breastfeedingStatus String?
+ feedingType String?
+ referralStatus String?
+ referralType String?
+ sourceRecordId String?
+  upt MasterUPT @relation(fields:[uptId], references:[id])
+ sourceRecord SourceRecord? @relation(fields:[sourceRecordId], references:[id], onDelete:SetNull)
+}
+model DeathRecord {
+  id String @id @default(uuid())
+ uptId String
+ periodId String
+ personName String?
+ legalStatus String?
+ sex String?
+ birthDate DateTime?
+ deathDate DateTime?
+ age Int?
+ citizenship String?
+ country String?
+ crimeType String?
+ primaryDiagnosis String?
+ secondaryDiagnosis1 String?
+ secondaryDiagnosis2 String?
+ notes String?
+ sourceRecordId String?
+  upt MasterUPT @relation(fields:[uptId], references:[id])
+ sourceRecord SourceRecord? @relation(fields:[sourceRecordId], references:[id], onDelete:SetNull)
+}
+model KieActivitySummary {
+  id String @id @default(uuid())
+ uptId String
+ periodId String
+ topic String
+ participantCount Int @default(0)
+ counselorCount Int @default(0)
+ medicalProfessionalCount Int @default(0)
+ nonMedicalProfessionalCount Int @default(0)
+ internalInstitutionCount Int @default(0)
+ externalInstitutionCount Int @default(0)
+ sourceRecordId String?
+  upt MasterUPT @relation(fields:[uptId], references:[id])
+ sourceRecord SourceRecord? @relation(fields:[sourceRecordId], references:[id], onDelete:SetNull)
+}
+model PalliativeRecord {
+  id String @id @default(uuid())
+ uptId String
+ periodId String
+ personName String?
+ legalStatus String?
+ age Int?
+ diagnosis String?
+ sex String?
+ careStatus String?
+ sourceRecordId String?
+  upt MasterUPT @relation(fields:[uptId], references:[id])
+ sourceRecord SourceRecord? @relation(fields:[sourceRecordId], references:[id], onDelete:SetNull)
+}
+model PtmCaseSummary {
+  id String @id @default(uuid())
+ uptId String
+ periodId String
+ diseaseGroup String
+ diseaseName String
+ caseStatus CaseStatus
+ caseCount Int @default(0)
+ sourceRecordId String?
+  upt MasterUPT @relation(fields:[uptId], references:[id])
+ sourceRecord SourceRecord? @relation(fields:[sourceRecordId], references:[id], onDelete:SetNull)
+  @@index([periodId, diseaseGroup, diseaseName, caseStatus])
+}
+model InfectiousDiseaseSummary {
+  id String @id @default(uuid())
+ uptId String
+ periodId String
+ program String
+ indicator String
+ category String?
+ value Int @default(0)
+ sourceRecordId String?
+  upt MasterUPT @relation(fields:[uptId], references:[id])
+ sourceRecord SourceRecord? @relation(fields:[sourceRecordId], references:[id])
+}
+model Referral {
+  id String @id @default(uuid())
+ uptId String
+ periodId String
+ personName String?
+ legalStatus String?
+ age Int?
+ sex String?
+ diagnosis String?
+ referralType String?
+ destinationFacility String?
+ referralDate DateTime?
+ notes String?
+ sourceRecordId String?
+  upt MasterUPT @relation(fields:[uptId], references:[id])
+ sourceRecord SourceRecord? @relation(fields:[sourceRecordId], references:[id], onDelete:SetNull)
+}
+model ClinicFacility {
+  id String @id @default(uuid())
+ uptId String
+ year Int
+ semester Int
+ facilityItem String
+ category String?
+ quantity Int @default(0)
+ condition String?
+ availabilityStatus String?
+ notes String?
+ sourceRecordId String?
+  upt MasterUPT @relation(fields:[uptId], references:[id])
+ sourceRecord SourceRecord? @relation(fields:[sourceRecordId], references:[id], onDelete:SetNull)
+}
+model SubmissionDocument {
+  id String @id @default(uuid())
+ uptId String
+ periodId String
+ documentType String
+ fileName String
+ filePath String
+ documentNumber String?
+ documentDate DateTime?
+ verificationStatus String?
+ sourceFileId String?
+  upt MasterUPT @relation(fields:[uptId], references:[id])
+ sourceFile SourceFile? @relation(fields:[sourceFileId], references:[id], onDelete:SetNull)
+}
+model HealthProfile {
+  id String @id @default(uuid())
+  name String
+  nik String? @db.VarChar(32)
+  address String?
+  phone String? @db.VarChar(50)
+  birthPlace String? @db.VarChar(100)
+  birthDate DateTime?
+  sex String? @db.VarChar(20)
+  bloodType String? @db.VarChar(10)
+  email String? @db.VarChar(150)
+  createdById String?
+  lastUpdatedById String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy User? @relation("HealthProfileCreatedBy", fields:[createdById], references:[id], onDelete:SetNull)
+  lastUpdatedBy User? @relation("HealthProfileUpdatedBy", fields:[lastUpdatedById], references:[id], onDelete:SetNull)
+  exams HealthExam[]
+  @@index([name])
+  @@index([nik])
+  @@index([birthDate])
+}
+
+model HealthExam {
+  id String @id @default(uuid())
+  profileId String
+  examinationDate DateTime?
+  systolic Int?
+  diastolic Int?
+  pulse Int?
+  temperature Decimal? @db.Decimal(5,2)
+  heightCm Decimal? @db.Decimal(6,2)
+  weightKg Decimal? @db.Decimal(6,2)
+  waistCm Decimal? @db.Decimal(6,2)
+  bloodSugar Decimal? @db.Decimal(8,2)
+  totalCholesterol Decimal? @db.Decimal(8,2)
+  hdl Decimal? @db.Decimal(8,2)
+  ldl Decimal? @db.Decimal(8,2)
+  triglycerides Decimal? @db.Decimal(8,2)
+  uricAcid Decimal? @db.Decimal(8,2)
+  hemoglobin Decimal? @db.Decimal(6,2)
+  oxygenSaturation Decimal? @db.Decimal(5,2)
+  respiratoryRate Int?
+  complaints String?
+  diseaseHistory String?
+  currentMedication String?
+  examinerName String?
+  conclusion String?
+  notes String?
+  createdById String?
+  lastUpdatedById String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  profile HealthProfile @relation(fields:[profileId], references:[id], onDelete:Cascade)
+  createdBy User? @relation("HealthExamCreatedBy", fields:[createdById], references:[id], onDelete:SetNull)
+  lastUpdatedBy User? @relation("HealthExamUpdatedBy", fields:[lastUpdatedById], references:[id], onDelete:SetNull)
+  medications HealthMedication[]
+  @@index([profileId, examinationDate])
+}
+
+model HealthMedication {
+  id String @id @default(uuid())
+  examId String
+  medicineId String?
+  medicineName String
+  quantity Int?
+  unit String? @db.VarChar(50)
+  notes String?
+  createdAt DateTime @default(now())
+  exam HealthExam @relation(fields:[examId], references:[id], onDelete:Cascade)
+  medicine MedicineMaster? @relation(fields:[medicineId], references:[id], onDelete:SetNull)
+  @@index([examId])
+  @@index([medicineId])
+}
+
+model AuditLog {
+  id String @id @default(uuid())
+ userId String?
+ action String
+ module String
+ recordId String?
+ ipAddress String?
+ userAgent String?
+ metadata Json?
+ createdAt DateTime @default(now())
+ user User? @relation(fields:[userId], references:[id], onDelete:SetNull)
+  @@index([createdAt])
+ @@index([module, action])
+}
+
+
+model MedicineMaster {
+  id String @id @default(uuid())
+  code String @unique @db.VarChar(50)
+  name String @db.VarChar(200)
+  dosageForm String? @db.VarChar(100)
+  strength String? @db.VarChar(100)
+  unit String @db.VarChar(50)
+  groupName String? @db.VarChar(100)
+  category String? @db.VarChar(100)
+  minStock Int @default(0)
+  maxStock Int?
+  active Boolean @default(true)
+  uptId String?
+  upt MasterUPT? @relation(fields:[uptId], references:[id], onDelete:SetNull)
+  receipts MedicineReceipt[]
+  inbounds MedicineInbound[]
+  distributions MedicineDistribution[]
+  issues MedicineIssue[]
+  openings MedicineStockOpening[]
+  healthMedications HealthMedication[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([name])
+}
+
+model MedicineReceipt {
+  id String @id @default(uuid())
+  medicineId String
+  uptId String
+  receiptDate DateTime
+  documentNumber String? @db.VarChar(100)
+  source String? @db.VarChar(200)
+  batchNumber String? @db.VarChar(100)
+  expiryDate DateTime?
+  quantity Int
+  unit String @db.VarChar(50)
+  price Decimal? @db.Decimal(18,2)
+  notes String?
+  medicine MedicineMaster @relation(fields:[medicineId], references:[id])
+  upt MasterUPT @relation(fields:[uptId], references:[id])
+  createdAt DateTime @default(now())
+  @@index([uptId, receiptDate])
+}
+
+model MedicineInbound {
+  id String @id @default(uuid())
+  medicineId String
+  uptId String
+  inboundDate DateTime
+  documentNumber String? @db.VarChar(100)
+  batchNumber String? @db.VarChar(100)
+  expiryDate DateTime?
+  quantity Int
+  unit String @db.VarChar(50)
+  source String? @db.VarChar(200)
+  notes String?
+  medicine MedicineMaster @relation(fields:[medicineId], references:[id])
+  upt MasterUPT @relation(fields:[uptId], references:[id])
+  createdAt DateTime @default(now())
+  @@index([uptId, inboundDate])
+}
+
+model MedicineDistribution {
+  id String @id @default(uuid())
+  medicineId String
+  sourceUptId String
+  destinationUptId String
+  distributionDate DateTime
+  documentNumber String? @db.VarChar(100)
+  batchNumber String? @db.VarChar(100)
+  quantity Int
+  unit String @db.VarChar(50)
+  notes String?
+  medicine MedicineMaster @relation(fields:[medicineId], references:[id])
+  sourceUpt MasterUPT @relation("DistributionFrom", fields:[sourceUptId], references:[id])
+  destinationUpt MasterUPT @relation("DistributionTo", fields:[destinationUptId], references:[id])
+  createdAt DateTime @default(now())
+  @@index([sourceUptId, distributionDate])
+  @@index([destinationUptId, distributionDate])
+}
+
+model MedicineIssue {
+  id String @id @default(uuid())
+  medicineId String
+  uptId String
+  issueDate DateTime
+  batchNumber String? @db.VarChar(100)
+  quantity Int
+  unit String @db.VarChar(50)
+  purpose String? @db.VarChar(200)
+  notes String?
+  medicine MedicineMaster @relation(fields:[medicineId], references:[id])
+  upt MasterUPT @relation(fields:[uptId], references:[id])
+  createdAt DateTime @default(now())
+  @@index([uptId, issueDate])
+}
+
+
+model MedicineStockOpening {
+  id String @id @default(uuid())
+  medicineId String
+  uptId String
+  asOfDate DateTime
+  quantity Int
+  notes String?
+  medicine MedicineMaster @relation(fields:[medicineId], references:[id], onDelete:Cascade)
+  upt MasterUPT @relation(fields:[uptId], references:[id], onDelete:Cascade)
+  createdAt DateTime @default(now())
+  @@unique([medicineId, uptId, asOfDate])
+  @@index([uptId, asOfDate])
+}
