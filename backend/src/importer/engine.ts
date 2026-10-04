@@ -261,11 +261,6 @@ export async function runImport(db:DbClient, opts:{buf:Buffer;fileName:string;fi
               const topic=text(row[idx(['topik','materi','kegiatan'])]) || 'Tidak ditentukan';
               await db.kieActivitySummary.create({data:{uptId:rowUpt,periodId:opts.periodId,topic,participantCount:int(row[idx(['jumlah peserta','peserta'])])||0,counselorCount:int(row[idx(['jumlah penyuluh','penyuluh'])])||0,medicalProfessionalCount:int(row[idx(['medis','tenaga profesional medis'])])||0,nonMedicalProfessionalCount:int(row[idx(['non medis','tenaga profesional non medis'])])||0,internalInstitutionCount:int(row[idx(['satker pas','asal instansi dalam'])])||0,externalInstitutionCount:int(row[idx(['luar satker pas','asal instansi luar'])])||0,sourceRecordId:sr.id}}); break;
             }
-            case 'INFECTIOUS': {
-              const numericCols=Object.entries(row).filter(([,v])=>int(v)!==null) as [string,any][];
-              const val=numericCols.length?int(numericCols[numericCols.length-1][1]):0;
-              await db.infectiousDiseaseSummary.create({data:{uptId:rowUpt,periodId:opts.periodId,program:sn.toUpperCase().includes('TBC')?'TBC':sn.toUpperCase().includes('HIV')?'HIV':'IM',indicator:text(row[idx(['indikator','penyakit','kategori'])])||'Nilai',category:text(row[idx(['kategori','kelompok'])]),value:val||0,sourceRecordId:sr.id}}); break;
-            }
             case 'SARPRAS': {
               const sem=/semester\s*2|juli.*desember/i.test(sn)?2:1;
               await db.clinicFacility.create({data:{uptId:rowUpt,year:2026,semester:sem,facilityItem:text(row[idx(['sarana','prasarana','item','jenis'])])||text(row[1])||'Tidak ditentukan',category:text(row[idx(['kategori'])]),quantity:int(row[idx(['jumlah','qty','kuantitas'])])||0,condition:text(row[idx(['kondisi'])]),availabilityStatus:text(row[idx(['ketersediaan','status'])]),notes:text(row[idx(['keterangan','catatan'])]),sourceRecordId:sr.id}}); break;
