@@ -102,3 +102,42 @@ jobs:
           context: ./frontend
           push: false
           tags: siprima-pas-frontend:ci
+
+  postgres-baseline:
+    name: Generate PostgreSQL Baseline
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Generate PostgreSQL baseline SQL
+        run: |
+          mkdir -p ../artifacts
+          npx prisma migrate diff \
+            --from-empty \
+            --to-schema-datamodel prisma/schema.prisma \
+            --script > ../artifacts/postgresql-baseline.sql
+      - name: Verify baseline
+        run: |
+          test -s ../artifacts/postgresql-baseline.sql
+          echo "=== BASELINE SIZE ==="
+          wc -l ../artifacts/postgresql-baseline.sql
+          echo "=== CREATE TABLE COUNT ==="
+          grep -c "CREATE TABLE" ../artifacts/postgresql-baseline.sql
+          echo "=== CREATE TYPE COUNT ==="
+          grep -c "CREATE TYPE" ../artifacts/postgresql-baseline.sql
+      - name: Upload baseline artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: siprima-postgresql-baseline
+          path: artifacts/postgresql-baseline.sql
