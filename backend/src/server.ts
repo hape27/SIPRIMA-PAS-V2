@@ -396,5 +396,5 @@ app.patch('/api/admin/users/:id',allow(RoleName.ADMIN),async(req,res)=>{const da
 app.get('/api/admin/upts',allow(RoleName.ADMIN),async(_q,res)=>res.json(await db.masterUPT.findMany({orderBy:{namaUpt:'asc'}})));
 app.patch('/api/admin/upts/:id',allow(RoleName.ADMIN),async(req,res)=>{const data:any={}; for(const k of ['namaUpt','jenisUpt','kelasUpt','kabupatenKota','kanwil','alamat','kodeUpt'])if(req.body[k]!==undefined)data[k]=req.body[k];if(req.body.aktif!==undefined)data.aktif=!!req.body.aktif;const u=await db.masterUPT.update({where:{id:Array.isArray(req.params.id)?req.params.id[0]:req.params.id},data});await audit(req,'UPT_UPDATE','ADMIN',u.id,data);res.json(u);});
 app.get('/api/audit',allow(RoleName.ADMIN),async(_q,res)=>res.json(await db.auditLog.findMany({include:{user:{select:{name:true,email:true}}},orderBy:{createdAt:'desc'},take:200})));
-app.use((err:any,_req:any,res:any,_next:any)=>res.status(500).json({message:err.message||'Server error'}));
+app.use((err:any,_req:any,res:any,_next:any)=>{console.error(err);res.status(500).json({message:'Server error'});});
 app.listen(Number(process.env.PORT||4000),()=>console.log('SIPRIMA PAS API listening on '+(process.env.PORT||4000)));
