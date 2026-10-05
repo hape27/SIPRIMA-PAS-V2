@@ -18,9 +18,9 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-siprima}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-siprima_pas}
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
-      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@siprima.local}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:?set ADMIN_EMAIL}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD}
-      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost}
+      CORS_ORIGIN: ${CORS_ORIGIN:?set CORS_ORIGIN}
       UPLOAD_DIR: /app/uploads
       PORT: 4000
     volumes: ["siprima_uploads:/app/uploads"]
